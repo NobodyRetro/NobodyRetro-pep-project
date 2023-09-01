@@ -1,7 +1,13 @@
 package Controller;
 
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+
+import Util.ConnectionUtil; //so I can use ConnectionUtil.java
 import io.javalin.Javalin;
 import io.javalin.http.Context;
+import java.sql.Connection;
+import Model.Account; //so I can use the get/setUsername and get/setPassword
 
 /**
  * TODO: You will need to write your own endpoints and handlers for your controller. The endpoints you will need can be
@@ -17,9 +23,84 @@ public class SocialMediaController {
     public Javalin startAPI() {
         Javalin app = Javalin.create();
         app.get("example-endpoint", this::exampleHandler);
+        
+    //REGISTER TESTS 
+        app.post("register", this::handleRegister);
 
-        return app;
+    //LOGIN TESTS
+        app.post("login", this::loginHandler);
+
+    //CREATE & RETRIEVE ALL MESSAGE TESTS
+        app.post("messages", this::messagesHandler);
+
+    //DELETE MESSAGE TESTS
+        app.post("messages/1", this::messagesDeleteHandler);
+
+    //RETRIEVE USER MESSAGES TESTS
+        app.post("accounts/1/messages", this::userMessagesHandler);
+
+    //RETRIEVE MESSAGES FROM ID TESTS
+        app.post("messages/100", this::messagesIDHandler);
+
+    //UPDATE MESSAGES TESTS
+        app.post("messages/2", this::messagesUpdateHandler);
+
+		return app;
     }
+
+    private void handleRegister(Context context) throws SQLException{
+//Connect to Account.java, convert the body sent from the client into the account.class
+        Account account = context.bodyAsClass(Account.class); 
+//Check username !null & password length > 4
+        if(account.getUsername().isEmpty() || account.getPassword().length() < 4){
+            context.status(400); return;
+        }
+
+        Connection handleConnection = ConnectionUtil.getConnection(); 
+        PreparedStatement ps = handleConnection.prepareStatement
+        ("insert into account (username,password) values (?,?)");
+        ps.setString(1, account.getUsername());
+        ps.setString(2, account.getPassword());
+
+        try{
+            int result = ps.executeUpdate();
+        } catch (SQLException e) { 
+            context.status(400); return;
+        }
+          
+    }
+    
+    private void loginHandler(Context context) {
+
+    }
+
+    private void messagesHandler(Context context){
+
+    }
+
+    private void messagesDeleteHandler (Context context) {
+
+    }
+
+    private void userMessagesHandler (Context context) {
+
+    }
+
+    private void messagesIDHandler (Context context) {
+
+    }
+
+    private void messagesUpdateHandler (Context context) {
+
+    }
+
+    private void prepareStatement(String string) {
+
+    }
+
+
+
+
 
     /**
      * This is an example handler for an example endpoint.
