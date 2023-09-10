@@ -1,11 +1,17 @@
 package Controller;
 
 import java.sql.PreparedStatement;
+import java.sql.ResultSet; //So i can get returned keys from SQL
 import java.sql.SQLException;
 
 import Util.ConnectionUtil; //so I can use ConnectionUtil.java
 import io.javalin.Javalin;
 import io.javalin.http.Context;
+
+import java.sql.Statement; //So we can create generated keys in the database
+
+import javax.xml.transform.Result;
+
 import java.sql.Connection;
 import Model.Account; //so I can use the get/setUsername and get/setPassword
 
@@ -57,13 +63,23 @@ public class SocialMediaController {
         }
 
         Connection handleConnection = ConnectionUtil.getConnection(); 
+//prepared statment creates the username, password and key
         PreparedStatement ps = handleConnection.prepareStatement
-        ("insert into account (username,password) values (?,?)");
+        ("insert into account (username,password) values (?,?)", 
+        Statement.RETURN_GENERATED_KEYS);
         ps.setString(1, account.getUsername());
         ps.setString(2, account.getPassword());
+    
 
         try{
-            int result = ps.executeUpdate();
+//try to create the account, gets generated keys, gets the number, returns the account then a 200 status
+            ps.executeUpdate();
+            ResultSet rs = ps.getGeneratedKeys();
+            rs.next();
+            account.setAccount_id(rs.getInt(1));
+            context.json(account);
+            context.status(200); return;
+//if it exists then catch and send 400 status
         } catch (SQLException e) { 
             context.status(400); return;
         }
