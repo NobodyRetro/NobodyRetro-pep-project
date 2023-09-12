@@ -1,19 +1,22 @@
 package Controller;
 
 import java.sql.PreparedStatement;
-import java.sql.ResultSet; //So i can get returned keys from SQL
+import java.sql.ResultSet; //So I can get returned keys from SQL
 import java.sql.SQLException;
 
 import Util.ConnectionUtil; //so I can use ConnectionUtil.java
 import io.javalin.Javalin;
 import io.javalin.http.Context;
 
-import java.sql.Statement; //So we can create generated keys in the database
+import java.sql.Statement; //So I can create generated keys in the database
+import java.util.ArrayList; //So I can use ArrayLists
+import java.util.List; //So I can use lists
 
 import javax.xml.transform.Result;
 
 import java.sql.Connection;
-import Model.Account; //so I can use the get/setUsername and get/setPassword
+import Model.Account; //so I can use everything from Account.java
+import Model.Message; //So I can use everything in Massage.java
 
 /**
  * TODO: You will need to write your own endpoints and handlers for your controller. The endpoints you will need can be
@@ -40,7 +43,7 @@ public class SocialMediaController {
         app.post("messages", this::messagesHandler);
 
     //DELETE MESSAGE TESTS
-        app.post("messages/1", this::messagesDeleteHandler);
+        app.post("messages/:id", this::messagesDeleteHandler);
 
     //RETRIEVE USER MESSAGES TESTS
         app.post("accounts/1/messages", this::userMessagesHandler);
@@ -128,10 +131,80 @@ public class SocialMediaController {
     }
 
     private void messagesHandler(Context context){
+        try{
+//Try to connect to everything like we have been doing
+            Connection connection = ConnectionUtil.getConnection();
+            PreparedStatement ps = connection.prepareStatement("SELECT * FROM message");
+            ResultSet resultSet = ps.executeQuery();
+//Create an ArrayList called messages
+            List<Message> messages = new ArrayList<>();
+            while (resultSet.next()){
+
+//Set variables to the resultSet
+                int messageID = resultSet.getInt("message_id");
+                int accountID = resultSet.getInt("posted_by");
+                String messageText = resultSet.getString("message_text");
+                long timestamp = resultSet.getLong("time_posted_epoch");
+
+//Check for empty message and mesage length
+                if(messageText.isEmpty() || messageText.length() > 254){
+                    context.status(400);
+                    return;
+                }
+
+//Check if the user exists in the database
+                PreparedStatement userCheck = connection.prepareStatement("SELECT * FROM account WHERE account_id=?");
+                userCheck.setInt(1,accountID);
+                ResultSet userCheckResult = userCheck.executeQuery();
+                if(!userCheckResult.next()){
+                    context.status(400);
+                    return;
+                }
+
+                Message message = new Message(messageID, accountID, messageText, timestamp);
+                messages.add(message);
+                
+            }
+            context.json(messages);
+            context.status(200);
+
+        } catch (SQLException e){
+            e.printStackTrace();
+            context.status(500);
+        }
 
     }
 
     private void messagesDeleteHandler (Context context) {
+        try{
+//Get the message ID from the URL parameted ( '1', '100')
+            String messageIDString = context.pathParam("id");
+            int messsageID = Integer.parseInt(messageIDString);
+//Connect to DB
+            Connection connection = ConnectionUtil.getConnection();
+//Check is the message exists within the given ID
+            PreparedStatement checkMessageExists = connection.prepareStatement("SELECT * FROM message WHERE message_id=?");
+            checkMessageExists.setInt(1, messsageID);
+            ResultSet resultSet = checkMessageExists.executeQuery();
+//If it does, delete it
+            if(resultSet.next()){
+                PreparedStatement deleteMessage = connection.prepareStatement("DELETE * FROM messages WHERE message_id=?");
+                deleteMessage.setInt(1,messsageID);
+                int rowsAffected = deleteMessage.executeUpdate();
+
+                if(rowsAffected == 1){
+                    context.status(200);
+                }else{
+                    context.status(500);
+                }
+            }else{
+//Message with given ID doesnt exist
+                context.status(200);
+            }
+        } catch (SQLException | NumberFormatException e){
+            e.printStackTrace();
+            context.status(500);
+        }
 
     }
 
