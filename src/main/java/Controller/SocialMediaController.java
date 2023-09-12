@@ -79,6 +79,7 @@ public class SocialMediaController {
             account.setAccount_id(rs.getInt(1));
             context.json(account);
             context.status(200); return;
+
 //if it exists then catch and send 400 status
         } catch (SQLException e) { 
             context.status(400); return;
@@ -87,7 +88,43 @@ public class SocialMediaController {
     }
     
     private void loginHandler(Context context) {
+//Connect to Account.java, convert the body sent from the client into the account.class
+        Account account = context.bodyAsClass(Account.class);
+        if(account == null) {
+            context.status(400);
+            return;
+        }
+//Create variables to use
+        String username = account.getUsername();
+        String password = account.getPassword();
+        Connection connection = ConnectionUtil.getConnection();
+    
+        try {
+//Check if the username from the client is in the database
+            PreparedStatement ps = connection.prepareStatement("SELECT account_id FROM account WHERE username = ? and password = ?");
+            ps.setString(1, username);
+            ps.setString(2,password);
+            ResultSet resultSet = ps.executeQuery();
+    
+//If the username exists check to see if the password is correct
+            if (resultSet.next()) {
+                String storedPassword = resultSet.getString("password");
 
+//Successful login
+                    int accountID = resultSet.getInt("account_id");
+                    account.setAccount_id(accountID);
+                    context.json(account);
+                    context.status(200);
+                    return;
+            }
+    
+// If username doesn't exist or password is incorrect, return 401 Unauthorized
+            context.status(401);
+        } catch (SQLException e) {
+            e.printStackTrace();
+// Handle the exception if necessary
+            context.status(500); 
+        }
     }
 
     private void messagesHandler(Context context){
