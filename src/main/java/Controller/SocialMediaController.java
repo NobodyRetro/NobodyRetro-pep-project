@@ -33,25 +33,25 @@ public class SocialMediaController {
         Javalin app = Javalin.create();
         app.get("example-endpoint", this::exampleHandler);
         
-    //REGISTER TESTS 
+//REGISTER TESTS 
         app.post("register", this::handleRegister);
 
-    //LOGIN TESTS
+//LOGIN TESTS
         app.post("login", this::loginHandler);
 
-    //CREATE & RETRIEVE ALL MESSAGE TESTS
+//CREATE & RETRIEVE ALL MESSAGE TESTS
         app.post("messages", this::messagesHandler);
 
-    //DELETE MESSAGE TESTS
+//DELETE MESSAGE TESTS
         app.post("messages/delete/{id}", this::messagesDeleteHandler);
 
-    //RETRIEVE USER MESSAGES TESTS
+//RETRIEVE USER MESSAGES TESTS
         app.post("accounts/{id}/messages", this::userMessagesHandler);
 
-    //RETRIEVE MESSAGES FROM ID TESTS
+//RETRIEVE MESSAGES FROM ID TESTS
         app.post("messages/id/{id}", this::messagesIDHandler);
 
-    //UPDATE MESSAGES TESTS
+//UPDATE MESSAGES TESTS
         app.post("messages/update/{id}", this::messagesUpdateHandler);
 
 		return app;
@@ -89,7 +89,8 @@ public class SocialMediaController {
         }
           
     }
-    
+//*****************************************************************************************************************************/    
+
     private void loginHandler(Context context) {
 //Connect to Account.java, convert the body sent from the client into the account.class
         Account account = context.bodyAsClass(Account.class);
@@ -130,14 +131,15 @@ public class SocialMediaController {
         }
     }
 
+//*****************************************************************************************************************************/    
+
     private void messagesHandler(Context context){
         try{
 //Try to connect to everything like we have been doing
             Connection connection = ConnectionUtil.getConnection();
             PreparedStatement ps = connection.prepareStatement("SELECT * FROM message");
             ResultSet resultSet = ps.executeQuery();
-//Create an ArrayList called messages
-            List<Message> messages = new ArrayList<>();
+
             while (resultSet.next()){
 
 //Set variables to the resultSet
@@ -156,16 +158,16 @@ public class SocialMediaController {
                 PreparedStatement userCheck = connection.prepareStatement("SELECT * FROM account WHERE account_id=?");
                 userCheck.setInt(1,accountID);
                 ResultSet userCheckResult = userCheck.executeQuery();
+
+//If doesnt exist
                 if(!userCheckResult.next()){
                     context.status(400);
                     return;
                 }
-
+//If exists make a constructor and return the message
                 Message message = new Message(messageID, accountID, messageText, timestamp);
-                messages.add(message);
-                
+                context.json(message);
             }
-            context.json(messages);
             context.status(200);
 
         } catch (SQLException e){
@@ -175,6 +177,8 @@ public class SocialMediaController {
 
     }
 
+ //*****************************************************************************************************************************/    
+   
     private void messagesDeleteHandler (Context context) {
         try{
 //Get the message ID from the URL path( '1', '100')
@@ -211,6 +215,8 @@ public class SocialMediaController {
         }
 
     }
+
+//*****************************************************************************************************************************/    
 
     private void userMessagesHandler (Context context) {
 //Connect to the path
@@ -255,6 +261,8 @@ public class SocialMediaController {
         }
     }
 
+//*****************************************************************************************************************************/    
+
     private void messagesIDHandler (Context context) {
         try {
 //Get the messageID from the URL path
@@ -288,52 +296,61 @@ public class SocialMediaController {
         }
     }
 
+//*****************************************************************************************************************************/    
+
     private void messagesUpdateHandler (Context context) {
         try {
+//Get the message from the path, connect, create Prepared statement to update the message_text at the provided message_id location
             String messageIDString = context.pathParam("id");
             int messageID = Integer.parseInt(messageIDString);
-    
             Connection connection = ConnectionUtil.getConnection();
             PreparedStatement ps = connection.prepareStatement("UPDATE message SET message_text = ? WHERE message_id = ?");
             
-            // Get the new message text from the request body
+// Get the new message text from the request body
             String newMessageText = context.body();
     
+//Check that the new message isnt empty or longer than 254, if they are send 400 
             if (newMessageText.isEmpty() || newMessageText.length() > 254) {
-                context.status(400); // Bad Request - Invalid message text
+                context.status(400);
                 return;
             }
-    
+//Parameters for the prepared statement 
             ps.setString(1, newMessageText);
             ps.setInt(2, messageID);
-    
+
+//Exectutes the update and returns the number of rows effected
             int rowsAffected = ps.executeUpdate();
-    
+ 
+//If a row was effected (meaning it was successful) do this
             if (rowsAffected == 1) {
-                // Retrieve the updated message
                 PreparedStatement retrieveUpdatedMessage = connection.prepareStatement("SELECT * FROM message WHERE message_id = ?");
                 retrieveUpdatedMessage.setInt(1, messageID);
                 ResultSet resultSet = retrieveUpdatedMessage.executeQuery();
     
+//Assign variables to Message.java
                 if (resultSet.next()) {
                     int updatedMessageID = resultSet.getInt("message_id");
                     int accountID = resultSet.getInt("posted_by");
                     String updatedMessageText = resultSet.getString("message_text");
                     long timestamp = resultSet.getLong("time_posted_epoch");
     
+//Contructor makes a new message objected called updatedMessage, returns it as a json object and returns the status 200
                     Message updatedMessage = new Message(updatedMessageID, accountID, updatedMessageText, timestamp);
-    
                     context.json(updatedMessage);
-                    context.status(200); // OK
+                    context.status(200);
                 } else {
-                    context.status(500); // Internal Server Error - Unable to retrieve updated message
+
+//Unable to retrieve updated message
+                    context.status(500);
                 }
             } else {
-                context.status(404); // Not Found - Message not found
+
+//No message was found, no rows were affected
+                context.status(404);
             }
         } catch (SQLException | NumberFormatException e) {
             e.printStackTrace();
-            context.status(500); // Internal Server Error
+            context.status(500);
         }
     }
 
