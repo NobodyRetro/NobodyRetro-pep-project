@@ -43,16 +43,16 @@ public class SocialMediaController {
         app.post("messages", this::messagesHandler);
 
     //DELETE MESSAGE TESTS
-        app.post("messages/:id", this::messagesDeleteHandler);
+        app.post("messages/delete/{id}", this::messagesDeleteHandler);
 
     //RETRIEVE USER MESSAGES TESTS
-        app.post("accounts/1/messages", this::userMessagesHandler);
+        app.post("accounts/{id}/messages", this::userMessagesHandler);
 
     //RETRIEVE MESSAGES FROM ID TESTS
-        app.post("messages/100", this::messagesIDHandler);
+        app.post("messages/id/{id}", this::messagesIDHandler);
 
     //UPDATE MESSAGES TESTS
-        app.post("messages/2", this::messagesUpdateHandler);
+        app.post("messages/update/{id}", this::messagesUpdateHandler);
 
 		return app;
     }
@@ -177,15 +177,18 @@ public class SocialMediaController {
 
     private void messagesDeleteHandler (Context context) {
         try{
-//Get the message ID from the URL parameted ( '1', '100')
+//Get the message ID from the URL path( '1', '100')
             String messageIDString = context.pathParam("id");
             int messsageID = Integer.parseInt(messageIDString);
+
 //Connect to DB
             Connection connection = ConnectionUtil.getConnection();
+
 //Check is the message exists within the given ID
             PreparedStatement checkMessageExists = connection.prepareStatement("SELECT * FROM message WHERE message_id=?");
             checkMessageExists.setInt(1, messsageID);
             ResultSet resultSet = checkMessageExists.executeQuery();
+
 //If it does, delete it
             if(resultSet.next()){
                 PreparedStatement deleteMessage = connection.prepareStatement("DELETE * FROM messages WHERE message_id=?");
@@ -198,6 +201,7 @@ public class SocialMediaController {
                     context.status(500);
                 }
             }else{
+
 //Message with given ID doesnt exist
                 context.status(200);
             }
@@ -209,15 +213,128 @@ public class SocialMediaController {
     }
 
     private void userMessagesHandler (Context context) {
+//Connect to the path
+        int accountId = Integer.parseInt(context.pathParam("id"));
 
+        try {
+//Connect and check if user exists within the DB using a prepared statement
+            Connection connection = ConnectionUtil.getConnection();
+            PreparedStatement userCheckPS = connection.prepareStatement("SELECT * FROM users WHERE user_id = ?");
+            userCheckPS.setInt(1, accountId);
+            ResultSet userCheckResultSet = userCheckPS.executeQuery();
+    
+//User doesnt exist
+            if (!userCheckResultSet.next()) {
+                context.status(404);
+                return;
+            }
+    
+//User exists, continue
+            PreparedStatement ps = connection.prepareStatement("SELECT * FROM message WHERE posted_by = ?");
+            ps.setInt(1, accountId);
+            ResultSet resultSet = ps.executeQuery();
+    
+            List<Message> messages = new ArrayList<>();
+            while (resultSet.next()) {
+
+//Varibales to use in Message.java
+                int messageID = resultSet.getInt("message_id");
+                int accountID = resultSet.getInt("posted_by");
+                String messageText = resultSet.getString("message_text");
+                long timestamp = resultSet.getLong("time_posted_epoch");
+//Constructor for the message
+                Message message = new Message(messageID, accountID, messageText, timestamp);
+                messages.add(message);
+            }
+    
+            context.json(messages);
+            context.status(200);
+        } catch (SQLException e) {
+            e.printStackTrace();
+            context.status(500);
+        }
     }
 
     private void messagesIDHandler (Context context) {
+        try {
+//Get the messageID from the URL path
+            String messageIDString = context.pathParam("id");
+            int messageID = Integer.parseInt(messageIDString);
 
+//Connect and create a PS targeting all messages from the given message id 
+            Connection connection = ConnectionUtil.getConnection();
+            PreparedStatement ps = connection.prepareStatement("SELECT * FROM message WHERE message_id = ?");
+            ps.setInt(1, messageID);
+            ResultSet resultSet = ps.executeQuery();
+    
+            if (resultSet.next()) {
+//Create variables targeting Message.java
+                int messageIDResult = resultSet.getInt("message_id");
+                int accountID = resultSet.getInt("posted_by");
+                String messageText = resultSet.getString("message_text");
+                long timestamp = resultSet.getLong("time_posted_epoch");
+//Constructor 
+                Message message = new Message(messageIDResult, accountID, messageText, timestamp);
+    
+                context.json(message);
+                context.status(200);
+            } else {
+//Message not found
+                context.status(404); 
+            }
+        } catch (SQLException | NumberFormatException e) {
+            e.printStackTrace();
+            context.status(500);
+        }
     }
 
     private void messagesUpdateHandler (Context context) {
-
+        try {
+            String messageIDString = context.pathParam("id");
+            int messageID = Integer.parseInt(messageIDString);
+    
+            Connection connection = ConnectionUtil.getConnection();
+            PreparedStatement ps = connection.prepareStatement("UPDATE message SET message_text = ? WHERE message_id = ?");
+            
+            // Get the new message text from the request body
+            String newMessageText = context.body();
+    
+            if (newMessageText.isEmpty() || newMessageText.length() > 254) {
+                context.status(400); // Bad Request - Invalid message text
+                return;
+            }
+    
+            ps.setString(1, newMessageText);
+            ps.setInt(2, messageID);
+    
+            int rowsAffected = ps.executeUpdate();
+    
+            if (rowsAffected == 1) {
+                // Retrieve the updated message
+                PreparedStatement retrieveUpdatedMessage = connection.prepareStatement("SELECT * FROM message WHERE message_id = ?");
+                retrieveUpdatedMessage.setInt(1, messageID);
+                ResultSet resultSet = retrieveUpdatedMessage.executeQuery();
+    
+                if (resultSet.next()) {
+                    int updatedMessageID = resultSet.getInt("message_id");
+                    int accountID = resultSet.getInt("posted_by");
+                    String updatedMessageText = resultSet.getString("message_text");
+                    long timestamp = resultSet.getLong("time_posted_epoch");
+    
+                    Message updatedMessage = new Message(updatedMessageID, accountID, updatedMessageText, timestamp);
+    
+                    context.json(updatedMessage);
+                    context.status(200); // OK
+                } else {
+                    context.status(500); // Internal Server Error - Unable to retrieve updated message
+                }
+            } else {
+                context.status(404); // Not Found - Message not found
+            }
+        } catch (SQLException | NumberFormatException e) {
+            e.printStackTrace();
+            context.status(500); // Internal Server Error
+        }
     }
 
     private void prepareStatement(String string) {
