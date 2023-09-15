@@ -34,25 +34,25 @@ public class SocialMediaController {
         app.get("example-endpoint", this::exampleHandler);
         
 //REGISTER TESTS 
-        //TESTING--app.post("/register", this::handleRegister);
+        app.post("/register", this::handleRegister);
 
 //LOGIN TESTS
-        //TESTING--app.post("/login", this::loginHandler);
+        app.post("/login", this::loginHandler);
 
 //CREATE & RETRIEVE ALL MESSAGE TESTS
         app.get("/messages", this::messagesHandler);
 
 //DELETE MESSAGE TESTS
-        //TESTING--app.delete("/messages/delete/{id}", this::messagesDeleteHandler);
+        app.delete("/messages/delete/{id}", this::messagesDeleteHandler);
 
 //RETRIEVE USER MESSAGES TESTS
-        //TESTING--app.get("accounts/{id}/messages", this::userMessagesHandler);
+        app.get("accounts/{id}/messages", this::userMessagesHandler);
 
 //RETRIEVE MESSAGES FROM ID TESTS
-        //TESTING--app.get("messages/id/{id}", this::messagesIDHandler);
+        app.get("messages/id/{id}", this::messagesIDHandler);
 
 //UPDATE MESSAGES TESTS
-        //TESTING--app.patch("messages/update/{id}", this::messagesUpdateHandler);
+        app.patch("messages/update/{id}", this::messagesUpdateHandler);
 
 		return app;
     }
