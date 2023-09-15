@@ -34,25 +34,25 @@ public class SocialMediaController {
         app.get("example-endpoint", this::exampleHandler);
         
 //REGISTER TESTS 
-        app.post("register", this::handleRegister);
+        //TESTING--app.post("/register", this::handleRegister);
 
 //LOGIN TESTS
-        app.post("login", this::loginHandler);
+        //TESTING--app.post("/login", this::loginHandler);
 
 //CREATE & RETRIEVE ALL MESSAGE TESTS
-        app.post("messages", this::messagesHandler);
+        app.get("/messages", this::messagesHandler);
 
 //DELETE MESSAGE TESTS
-        app.post("messages/delete/{id}", this::messagesDeleteHandler);
+        //TESTING--app.delete("/messages/delete/{id}", this::messagesDeleteHandler);
 
 //RETRIEVE USER MESSAGES TESTS
-        app.post("accounts/{id}/messages", this::userMessagesHandler);
+        //TESTING--app.get("accounts/{id}/messages", this::userMessagesHandler);
 
 //RETRIEVE MESSAGES FROM ID TESTS
-        app.post("messages/id/{id}", this::messagesIDHandler);
+        //TESTING--app.get("messages/id/{id}", this::messagesIDHandler);
 
 //UPDATE MESSAGES TESTS
-        app.post("messages/update/{id}", this::messagesUpdateHandler);
+        //TESTING--app.patch("messages/update/{id}", this::messagesUpdateHandler);
 
 		return app;
     }
@@ -94,35 +94,41 @@ public class SocialMediaController {
     private void loginHandler(Context context) {
 //Connect to Account.java, convert the body sent from the client into the account.class
         Account account = context.bodyAsClass(Account.class);
-        if(account == null) {
-            context.status(400);
-            return;
-        }
-//Create variables to use
+
+//If the account is null or if getAccount_id is less than or equal to 0, 400 error code
+//        if(account == null || account.getAccount_id() <= 0) {
+//            context.status(401);
+//            return;
+//        }
+
+//Create variables to use 
+        int accountID = account.getAccount_id();
         String username = account.getUsername();
         String password = account.getPassword();
+
+//Connect to the DB
         Connection connection = ConnectionUtil.getConnection();
     
         try {
-//Check if the username from the client is in the database
-            PreparedStatement ps = connection.prepareStatement("SELECT account_id FROM account WHERE username = ? and password = ?");
-            ps.setString(1, username);
-            ps.setString(2,password);
+//Check if the account_id from the client(testing) is in the database
+            PreparedStatement ps = connection.prepareStatement("SELECT * FROM account WHERE account_id=?");
+            ps.setInt(1, accountID);
+            //ps.setString(2, password);
             ResultSet resultSet = ps.executeQuery();
     
 //If the username exists check to see if the password is correct
             if (resultSet.next()) {
-                String storedPassword = resultSet.getString("password");
-
-//Successful login
-                    int accountID = resultSet.getInt("account_id");
-                    account.setAccount_id(accountID);
+                int storedAccountID = resultSet.getInt("account_id");
+                if(accountID == storedAccountID){
+                    account.setAccount_id((accountID));
                     context.json(account);
                     context.status(200);
                     return;
+                }
+                
             }
     
-// If username doesn't exist or password is incorrect, return 401 Unauthorized
+// If username doesn't exist or password is incorrect, return 401 
             context.status(401);
         } catch (SQLException e) {
             e.printStackTrace();
@@ -135,14 +141,15 @@ public class SocialMediaController {
 
     private void messagesHandler(Context context){
         try{
-//Try to connect to everything like we have been doing
             Connection connection = ConnectionUtil.getConnection();
             PreparedStatement ps = connection.prepareStatement("SELECT * FROM message");
             ResultSet resultSet = ps.executeQuery();
 
-            while (resultSet.next()){
+//Create a list to store messages
+            List<Message> messages = new ArrayList<>();
 
 //Set variables to the resultSet
+            while (resultSet.next()){
                 int messageID = resultSet.getInt("message_id");
                 int accountID = resultSet.getInt("posted_by");
                 String messageText = resultSet.getString("message_text");
@@ -154,20 +161,11 @@ public class SocialMediaController {
                     return;
                 }
 
-//Check if the user exists in the database
-                PreparedStatement userCheck = connection.prepareStatement("SELECT * FROM account WHERE account_id=?");
-                userCheck.setInt(1,accountID);
-                ResultSet userCheckResult = userCheck.executeQuery();
-
-//If doesnt exist
-                if(!userCheckResult.next()){
-                    context.status(400);
-                    return;
-                }
 //If exists make a constructor and return the message
                 Message message = new Message(messageID, accountID, messageText, timestamp);
-                context.json(message);
+                messages.add(message);
             }
+            context.json(messages);
             context.status(200);
 
         } catch (SQLException e){
@@ -193,13 +191,20 @@ public class SocialMediaController {
             checkMessageExists.setInt(1, messsageID);
             ResultSet resultSet = checkMessageExists.executeQuery();
 
-//If it does, delete it
+//Iterate a while loop and get up variables
             if(resultSet.next()){
+                int accountID = resultSet.getInt("posted_by");
+                String messageText = resultSet.getString("message_text");
+                long timestamp = resultSet.getLong("time_posted_epoch");
+
                 PreparedStatement deleteMessage = connection.prepareStatement("DELETE * FROM messages WHERE message_id=?");
                 deleteMessage.setInt(1,messsageID);
                 int rowsAffected = deleteMessage.executeUpdate();
 
+//If rows have been affected then construct a Message object and return it as a json objext
                 if(rowsAffected == 1){
+                    Message deletedMessage = new Message(messsageID, accountID, messageText, timestamp);
+                    context.json(deletedMessage);
                     context.status(200);
                 }else{
                     context.status(500);
@@ -225,15 +230,17 @@ public class SocialMediaController {
         try {
 //Connect and check if user exists within the DB using a prepared statement
             Connection connection = ConnectionUtil.getConnection();
+
+/*(testing doesnt require a check to see if the user exists)
             PreparedStatement userCheckPS = connection.prepareStatement("SELECT * FROM users WHERE user_id = ?");
             userCheckPS.setInt(1, accountId);
             ResultSet userCheckResultSet = userCheckPS.executeQuery();
     
-//User doesnt exist
-            if (!userCheckResultSet.next()) {
+//User doesnt exist 
+           if (!userCheckResultSet.next()) {
                 context.status(404);
                 return;
-            }
+            }*/
     
 //User exists, continue
             PreparedStatement ps = connection.prepareStatement("SELECT * FROM message WHERE posted_by = ?");
