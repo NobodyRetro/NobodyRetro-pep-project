@@ -14,6 +14,8 @@ import java.util.List; //So I can use lists
 
 import javax.xml.transform.Result;
 
+import org.h2.util.json.JSONObject;
+
 import java.sql.Connection;
 import Model.Account; //so I can use everything from Account.java
 import Model.Message; //So I can use everything in Massage.java
@@ -39,14 +41,17 @@ public class SocialMediaController {
 //LOGIN TESTS
         app.post("/login", this::loginHandler);
 
-//CREATE & RETRIEVE ALL MESSAGE TESTS
-        app.get("/messages", this::messagesHandler);
+//CREATE MESSAGE TESTS
+        app.post("/messages", this::createMessagesHandler);
 
 //DELETE MESSAGE TESTS
         app.delete("/messages/delete/{id}", this::messagesDeleteHandler);
 
 //RETRIEVE USER MESSAGES TESTS
         app.get("accounts/{id}/messages", this::userMessagesHandler);
+
+//RETRIEVE ALL MESSAGES TEST
+        app.get("/messages", this::allMessagesHandler);
 
 //RETRIEVE MESSAGES FROM ID TESTS
         app.get("messages/id/{id}", this::messagesIDHandler);
@@ -91,93 +96,97 @@ public class SocialMediaController {
     }
 //*****************************************************************************************************************************/    
 
-    private void loginHandler(Context context) {
-//Connect to Account.java, convert the body sent from the client into the account.class
-        Account account = context.bodyAsClass(Account.class);
-
-//If the account is null or if getAccount_id is less than or equal to 0, 400 error code
-//        if(account == null || account.getAccount_id() <= 0) {
-//            context.status(401);
-//            return;
-//        }
-
-//Create variables to use 
-        int accountID = account.getAccount_id();
-        String username = account.getUsername();
-        String password = account.getPassword();
-
-//Connect to the DB
-        Connection connection = ConnectionUtil.getConnection();
-    
-        try {
-//Check if the account_id from the client(testing) is in the database
-            PreparedStatement ps = connection.prepareStatement("SELECT * FROM account WHERE account_id=?");
-            ps.setInt(1, accountID);
-            //ps.setString(2, password);
-            ResultSet resultSet = ps.executeQuery();
-    
-//If the username exists check to see if the password is correct
-            if (resultSet.next()) {
-                int storedAccountID = resultSet.getInt("account_id");
-                if(accountID == storedAccountID){
-                    account.setAccount_id((accountID));
-                    context.json(account);
-                    context.status(200);
-                    return;
-                }
-                
+        private void loginHandler(Context context) {
+    //Connect to Account.java, convert the body sent from the client into the account.class
+            Account account = context.bodyAsClass(Account.class);
+            if(account == null) {
+                context.status(400);
+                return;
             }
-    
-// If username doesn't exist or password is incorrect, return 401 
-            context.status(401);
-        } catch (SQLException e) {
-            e.printStackTrace();
-// Handle the exception if necessary
-            context.status(500); 
+    //Create variables to use
+            String username = account.getUsername();
+            String password = account.getPassword();
+            Connection connection = ConnectionUtil.getConnection();
+        
+            try {
+    //Check if the username from the client is in the database
+                PreparedStatement ps = connection.prepareStatement("SELECT account_id FROM account WHERE username = ? and password = ?");
+                ps.setString(1, username);
+                ps.setString(2,password);
+                ResultSet resultSet = ps.executeQuery();
+        
+    //Successful login
+                if (resultSet.next()) {
+                        int accountID = resultSet.getInt("account_id");
+                        account.setAccount_id(accountID);
+                        context.json(account);
+                        context.status(200);
+                        return;
+                }
+        
+    // If username doesn't exist or password is incorrect, return 401 Unauthorized
+                context.status(401);
+            } catch (SQLException e) {
+                e.printStackTrace();
+    // Handle the exception if necessary
+                context.status(500); 
+            }
         }
-    }
 
 //*****************************************************************************************************************************/    
 
-    private void messagesHandler(Context context){
+    private void createMessagesHandler(Context context){
+/* As a user, I should be able to submit a new post on the endpoint POST localhost:8080/messages. 
+The request body will contain a JSON representation of a message, which should be persisted to the database, 
+but will not contain a message_id.
+
+- The creation of the message will be successful if and only if the message_text is not blank, is under 255 characters, 
+and posted_by refers to a real, existing user. If successful, the response body should contain a JSON of the message, 
+including its message_id. The response status should be 200, which is the default. The new message should be persisted 
+to the database.
+- If the creation of the message is not successful, the response status should be 400. (Client error) */
+
+        Message message = context.bodyAsClass(Message.class);
+        String messageText = message.getMessage_text();
+
+        if(messageText == null || messageText.length() > 254){
+            context.status(400);
+            return;
+        }
         try{
-            Connection connection = ConnectionUtil.getConnection();
-            PreparedStatement ps = connection.prepareStatement("SELECT * FROM message");
-            ResultSet resultSet = ps.executeQuery();
+        Connection connection = ConnectionUtil.getConnection();
 
-//Create a list to store messages
-            List<Message> messages = new ArrayList<>();
+        PreparedStatement ps = connection.prepareStatement ("INSERT INTO message (message_text,posted_by,time_posted_epoch) values (?,?,?)",
+        Statement.RETURN_GENERATED_KEYS);
+        ps.setString(1, messageText);
+        ps.setInt(2, message.getPosted_by());
+        ps.setLong(3, message.getTime_posted_epoch());
 
-//Set variables to the resultSet
-            while (resultSet.next()){
-                int messageID = resultSet.getInt("message_id");
-                int accountID = resultSet.getInt("posted_by");
-                String messageText = resultSet.getString("message_text");
-                long timestamp = resultSet.getLong("time_posted_epoch");
-
-//Check for empty message and mesage length
-                if(messageText.isEmpty() || messageText.length() > 254){
-                    context.status(400);
-                    return;
-                }
-
-//If exists make a constructor and return the message
-                Message message = new Message(messageID, accountID, messageText, timestamp);
-                messages.add(message);
-            }
-            context.json(messages);
-            context.status(200);
+        ps.executeUpdate();
+        ResultSet rs = ps.getGeneratedKeys();
+        rs.next();
+        message.setMessage_id(rs.getInt(1));
+        
+        context.status(200);
+        context.json(message);
 
         } catch (SQLException e){
             e.printStackTrace();
-            context.status(500);
+            context.status(400);
         }
-
     }
 
  //*****************************************************************************************************************************/    
    
     private void messagesDeleteHandler (Context context) {
+/* As a User, I should be able to submit a DELETE request on the endpoint DELETE localhost:8080/messages/{message_id}.
+
+- The deletion of an existing message should remove an existing message from the database. 
+If the message existed, the response body should contain the now-deleted message. The response status should be 200, which is the default.
+- If the message did not exist, the response status should be 200, but the response body should be empty. 
+This is because the DELETE verb is intended to be idempotent, ie, multiple calls to the DELETE endpoint should respond 
+with the same type of response. */
+
         try{
 //Get the message ID from the URL path( '1', '100')
             String messageIDString = context.pathParam("id");
@@ -224,13 +233,11 @@ public class SocialMediaController {
 //*****************************************************************************************************************************/    
 
     private void userMessagesHandler (Context context) {
-//Connect to the path
+//Connect to the path and connect to the DB
         int accountId = Integer.parseInt(context.pathParam("id"));
+        Connection connection = ConnectionUtil.getConnection();
 
         try {
-//Connect and check if user exists within the DB using a prepared statement
-            Connection connection = ConnectionUtil.getConnection();
-
 /*(testing doesnt require a check to see if the user exists)
             PreparedStatement userCheckPS = connection.prepareStatement("SELECT * FROM users WHERE user_id = ?");
             userCheckPS.setInt(1, accountId);
@@ -269,6 +276,12 @@ public class SocialMediaController {
     }
 
 //*****************************************************************************************************************************/    
+
+private void allMessagesHandler(Context context){
+
+}
+
+//*****************************************************************************************************************************/
 
     private void messagesIDHandler (Context context) {
         try {
