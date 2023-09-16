@@ -387,7 +387,6 @@ updated message_text.
                 PreparedStatement ps2 = connection.prepareStatement("SELECT * FROM message WHERE message_id = ?");
                 ps2.setInt(1,messageID);
                 ResultSet resultSet = ps2.executeQuery();
-                resultSet.next();
                 
                 if(resultSet.next()){
                     int messageIDResult = resultSet.getInt("message_id");
