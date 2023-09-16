@@ -45,7 +45,7 @@ public class SocialMediaController {
         app.post("/messages", this::createMessagesHandler);
 
 //DELETE MESSAGE TESTS
-        app.delete("/messages/delete/{id}", this::messagesDeleteHandler);
+        app.delete("/messages/{id}", this::messagesDeleteHandler);
 
 //RETRIEVE USER MESSAGES TESTS
         app.get("accounts/{id}/messages", this::userMessagesHandler);
@@ -54,10 +54,10 @@ public class SocialMediaController {
         app.get("/messages", this::allMessagesHandler);
 
 //RETRIEVE MESSAGES FROM ID TESTS
-        app.get("messages/id/{id}", this::messagesIDHandler);
+        app.get("messages/{id}", this::messagesIDHandler);
 
 //UPDATE MESSAGES TESTS
-        app.patch("messages/update/{id}", this::messagesUpdateHandler);
+        app.patch("messages/{id}", this::messagesUpdateHandler);
 
 		return app;
     }
@@ -149,7 +149,7 @@ to the database.
         Message message = context.bodyAsClass(Message.class);
         String messageText = message.getMessage_text();
 
-        if(messageText == null || messageText.length() > 254){
+        if(messageText.isEmpty() || messageText.length() > 254){
             context.status(400);
             return;
         }
@@ -188,47 +188,50 @@ This is because the DELETE verb is intended to be idempotent, ie, multiple calls
 with the same type of response. */
 
         try{
-//Get the message ID from the URL path( '1', '100')
+//Grab the id from the URL path sent from the client(testing), parse the string into an int
             String messageIDString = context.pathParam("id");
             int messsageID = Integer.parseInt(messageIDString);
 
 //Connect to DB
             Connection connection = ConnectionUtil.getConnection();
 
-//Check is the message exists within the given ID
-            PreparedStatement checkMessageExists = connection.prepareStatement("SELECT * FROM message WHERE message_id=?");
-            checkMessageExists.setInt(1, messsageID);
-            ResultSet resultSet = checkMessageExists.executeQuery();
+//Get the message we plan to delete so we can return it if the message gets deleted
 
-//Iterate a while loop and get up variables
-            if(resultSet.next()){
-                int accountID = resultSet.getInt("posted_by");
-                String messageText = resultSet.getString("message_text");
-                long timestamp = resultSet.getLong("time_posted_epoch");
+            PreparedStatement getMessage = connection.prepareStatement("SELECT * FROM message WHERE message_id=?");
+            getMessage.setInt(1,messsageID);
+            ResultSet resultSet = getMessage.executeQuery();
+            
+        if(resultSet.next()){    
+            int accountID = resultSet.getInt("posted_by");
+            String messageText = resultSet.getString("message_text");
+            long timestamp = resultSet.getLong("time_posted_epoch");
 
-                PreparedStatement deleteMessage = connection.prepareStatement("DELETE * FROM messages WHERE message_id=?");
-                deleteMessage.setInt(1,messsageID);
-                int rowsAffected = deleteMessage.executeUpdate();
+            Message deletedMessage = new Message(messsageID, accountID, messageText, timestamp);
 
-//If rows have been affected then construct a Message object and return it as a json objext
-                if(rowsAffected == 1){
-                    Message deletedMessage = new Message(messsageID, accountID, messageText, timestamp);
-                    context.json(deletedMessage);
-                    context.status(200);
-                }else{
-                    context.status(500);
-                }
+//Lets assume the message is within the DB and try to delete it
+            PreparedStatement deleteMessage = connection.prepareStatement("DELETE FROM message WHERE message_id=?");
+            deleteMessage.setInt(1, messsageID);
+            int rowsAffected = deleteMessage.executeUpdate();
+
+//If a row was affected it means we deleted it so return the original message and send a 200
+            if(rowsAffected == 1){  
+                context.status(200);
+                context.json(deletedMessage);
+
             }else{
 
-//Message with given ID doesnt exist
+//If the message isnt there then send 200
                 context.status(200);
             }
-        } catch (SQLException | NumberFormatException e){
+        }else{
+            context.status(200);
+        }   
+        } catch (SQLException e){
             e.printStackTrace();
             context.status(500);
         }
 
-    }
+}
 
 //*****************************************************************************************************************************/    
 
@@ -278,7 +281,34 @@ with the same type of response. */
 //*****************************************************************************************************************************/    
 
 private void allMessagesHandler(Context context){
+/*As a user, I should be able to submit a GET request on the endpoint GET localhost:8080/messages.
+- The response body should contain a JSON representation of a list containing all messages retrieved from the database. 
+It is expected for the list to simply be empty if there are no messages. The response status should always be 200, which 
+is the default.*/
 
+    Connection connection = ConnectionUtil.getConnection();
+
+    try {
+        PreparedStatement ps = connection.prepareStatement("SELECT * FROM message");
+        ResultSet resultSet = ps.executeQuery();
+
+        List<Message> messages = new ArrayList<>();
+        while (resultSet.next()) {
+            int messageID = resultSet.getInt("message_id");
+            int accountID = resultSet.getInt("posted_by");
+            String messageText = resultSet.getString("message_text");
+            long timestamp = resultSet.getLong("time_posted_epoch");
+
+            Message message = new Message(messageID, accountID, messageText, timestamp);
+            messages.add(message);
+        }
+
+        context.json(messages);
+        context.status(200);
+    } catch (SQLException e) {
+        e.printStackTrace();
+        context.status(500);
+    }
 }
 
 //*****************************************************************************************************************************/
@@ -308,7 +338,7 @@ private void allMessagesHandler(Context context){
                 context.status(200);
             } else {
 //Message not found
-                context.status(404); 
+                context.status(200); 
             }
         } catch (SQLException | NumberFormatException e) {
             e.printStackTrace();
@@ -319,58 +349,66 @@ private void allMessagesHandler(Context context){
 //*****************************************************************************************************************************/    
 
     private void messagesUpdateHandler (Context context) {
+/*As a user, I should be able to submit a PATCH request on the endpoint PATCH localhost:8080/messages/{message_id}. 
+The request body should contain a new message_text values to replace the message identified by message_id. 
+The request body can not be guaranteed to contain any other information.
+
+- The update of a message should be successful if and only if the message id already exists and the new 
+message_text is not blank and is not over 255 characters. If the update is successful, the response body should 
+contain the full updated message (including message_id, posted_by, message_text, and time_posted_epoch), and the 
+response status should be 200, which is the default. The message existing on the database should have the 
+updated message_text.
+
+- If the update of the message is not successful for any reason, the response status should be 400. (Client error) */
+
         try {
-//Get the message from the path, connect, create Prepared statement to update the message_text at the provided message_id location
             String messageIDString = context.pathParam("id");
             int messageID = Integer.parseInt(messageIDString);
-            Connection connection = ConnectionUtil.getConnection();
-            PreparedStatement ps = connection.prepareStatement("UPDATE message SET message_text = ? WHERE message_id = ?");
-            
-// Get the new message text from the request body
-            String newMessageText = context.body();
     
-//Check that the new message isnt empty or longer than 254, if they are send 400 
+// Get the new message_text from the request body
+            String newMessageText = context.bodyAsClass(Message.class).getMessage_text();
+            
+// Check if the message_text is provided and not blank and the length isnt over 254
             if (newMessageText.isEmpty() || newMessageText.length() > 254) {
                 context.status(400);
                 return;
             }
-//Parameters for the prepared statement 
+//Connect to the DB and use a prepared statment to update the message text 
+            Connection connection = ConnectionUtil.getConnection();
+            PreparedStatement ps = connection.prepareStatement("UPDATE message SET message_text = ? WHERE message_id = ?");
             ps.setString(1, newMessageText);
             ps.setInt(2, messageID);
 
-//Exectutes the update and returns the number of rows effected
-            int rowsAffected = ps.executeUpdate();
- 
-//If a row was effected (meaning it was successful) do this
-            if (rowsAffected == 1) {
-                PreparedStatement retrieveUpdatedMessage = connection.prepareStatement("SELECT * FROM message WHERE message_id = ?");
-                retrieveUpdatedMessage.setInt(1, messageID);
-                ResultSet resultSet = retrieveUpdatedMessage.executeQuery();
-    
-//Assign variables to Message.java
-                if (resultSet.next()) {
-                    int updatedMessageID = resultSet.getInt("message_id");
+//Execute the statement and return the number of rows updated
+            int rowsUpdated = ps.executeUpdate();
+
+//If more than 0 rows were updated it was successful, grab variables from that updated message
+            if (rowsUpdated > 0) {
+                PreparedStatement ps2 = connection.prepareStatement("SELECT * FROM message WHERE message_id = ?");
+                ps2.setInt(1,messageID);
+                ResultSet resultSet = ps2.executeQuery();
+                resultSet.next();
+                
+                if(resultSet.next()){
+                    int messageIDResult = resultSet.getInt("message_id");
                     int accountID = resultSet.getInt("posted_by");
-                    String updatedMessageText = resultSet.getString("message_text");
+                    String messageText = resultSet.getString("message_text");
                     long timestamp = resultSet.getLong("time_posted_epoch");
+
+//Create message object with those vairables and turn it into the json object
+                    Message updatedMessage = new Message(messageIDResult, accountID, messageText, timestamp);
     
-//Contructor makes a new message objected called updatedMessage, returns it as a json object and returns the status 200
-                    Message updatedMessage = new Message(updatedMessageID, accountID, updatedMessageText, timestamp);
                     context.json(updatedMessage);
                     context.status(200);
-                } else {
-
-//Unable to retrieve updated message
-                    context.status(500);
+                }else{
+                    context.status(400);
                 }
             } else {
-
-//No message was found, no rows were affected
-                context.status(404);
+                context.status(400);
             }
         } catch (SQLException | NumberFormatException e) {
             e.printStackTrace();
-            context.status(500);
+            context.status(400);
         }
     }
 
